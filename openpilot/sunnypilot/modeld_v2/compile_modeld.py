@@ -346,13 +346,35 @@ def compile_jit(jit_or_fn, input_keys_or_make_inputs, make_queues=None, make_ran
   except FloatingPointError as e:
     from tinygrad.helpers import FLOAT16
     if FLOAT16.value:
-      print(f"{e}")
-      if hasattr(jit, 'reset'):
-        jit.reset()
-      elif hasattr(jit_or_fn, 'reset'):
-        jit_or_fn.reset()
-      with Context(FLOAT16=0):
-        return _evaluate_and_verify(jit, jit_or_fn, benchmark_runs)
+      print(f"compiled JIT produced nan, attempting float32 fallback for kernels...")
+
+      # Patch tinygrad OpenCLRenderer to fix QCOM float4 -> half4 assignment errors when FLOAT16=0 i hope...
+      from tinygrad.renderer.cstyle import OpenCLRenderer
+      from tinygrad.uop.ops import PatternMatcher, UPat, Ops
+      if not getattr(OpenCLRenderer, '_qcom_patched', False):
+        OpenCLRenderer.string_rewrite = PatternMatcher([
+          (UPat(Ops.STORE, src=(UPat.var('bidx'), UPat.var('var'))),
+           lambda ctx,bidx,var: f"{ctx.render_access(bidx)} = convert_{ctx.render_type(bidx)}({ctx[var]});"
+                                if not bidx.src[0].dtype.name.startswith("image") and bidx.dtype != var.dtype else None)
+        ]) + OpenCLRenderer.string_rewrite
+        OpenCLRenderer._qcom_patched = True
+
+      import tinygrad.engine.realize
+      from tinygrad.helpers import Context
+
+      jit_to_patch = jit if hasattr(jit, 'jit_cache') else jit_or_fn
+      if hasattr(jit_to_patch, 'jit_cache'):
+        with Context(FLOAT16=0):
+          for (j, i), _ in jit_to_patch.jit_cache:
+            if hasattr(j.prg, 'clprg') and hasattr(j.prg.clprg, 'name') and hasattr(j, 'schedule_item'):
+              try:
+                prg = tinygrad.engine.realize.to_program(j.schedule_item.ast, j.schedule_item.ctx.renderer)
+                j.prg = prg
+              except Exception as inner_e:
+                print(f"Failed to recompile kernel with FLOAT16=0: {inner_e}")
+                pass
+
+      return _evaluate_and_verify(jit, jit_or_fn, benchmark_runs)
     raise
 
 
