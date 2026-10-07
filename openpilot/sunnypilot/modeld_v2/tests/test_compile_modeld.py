@@ -311,3 +311,27 @@ class TestSupercomboCompileModeSelection(OpenpilotTestCase):
         if derived_frame_skip != 1:
           is_run_model = True
     return is_unified_supercombo, is_run_model
+
+
+class TestCompileJitFiniteValidation(OpenpilotTestCase):
+  def test_compile_jit_detects_non_finite_and_falls_back(self):
+    from unittest.mock import patch
+    from tinygrad.helpers import Context
+    from openpilot.sunnypilot.modeld_v2.compile_modeld import compile_jit
+
+    def fn(**kwargs):
+      from tinygrad.helpers import FLOAT16
+      from tinygrad.tensor import Tensor
+      if FLOAT16.value:
+        t = (Tensor([1.0]) / Tensor([0.0]) - Tensor([1.0]) / Tensor([0.0])).realize()
+      else:
+        t = Tensor([2.0, 1.0]).realize()
+      if 'output_buffers' in kwargs:
+        kwargs['output_buffers']['out'] = t
+      return t
+
+    with Context(FLOAT16=1):
+      with patch('openpilot.sunnypilot.modeld_v2.compile_modeld.dump_oob', return_value=None), \
+           patch('openpilot.sunnypilot.modeld_v2.compile_modeld.load_oob', side_effect=lambda f: fn):
+        res = compile_jit(fn, lambda seed: ((), {'output_buffers': {'out': None}}))
+        assert res is not None

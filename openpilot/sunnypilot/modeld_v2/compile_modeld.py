@@ -323,20 +323,37 @@ def compile_jit(jit_or_fn, input_keys_or_make_inputs, make_queues=None, make_ran
           val = [np.copy(v.numpy()) for v in (outs if isinstance(outs, tuple) else [outs])] if outs is not None else []
       return val
 
-  print('capture + replay')
-  test_val = run_eval(jit, 42, 3)
-  print(f'pickle round trip ({benchmark_runs} runs per seed)')
-  with tempfile.TemporaryFile(dir=".") as f:
-    dump_oob(jit, f)
-    f.seek(0)
-    loaded_jit = load_oob(f)
+  def _evaluate_and_verify(current_jit, current_jit_or_fn, runs_per_seed):
+    test_val = run_eval(current_jit, 42, 3)
+    with tempfile.TemporaryFile(dir=".") as f:
+      dump_oob(current_jit, f)
+      f.seek(0)
+      loaded_jit = load_oob(f)
 
-  for seed in (42, 43):
-    reference = test_val if seed == 42 else run_eval(jit_or_fn, seed, 1)
-    actual = run_eval(loaded_jit, seed, benchmark_runs)
-    for ref, val in zip(reference, actual, strict=True):
-      np.testing.assert_array_equal(ref, val)
-  return loaded_jit if return_loaded else jit
+    for seed in (42, 43):
+      reference = test_val if seed == 42 else run_eval(current_jit_or_fn, seed, 1)
+      actual = run_eval(loaded_jit, seed, runs_per_seed)
+      for val in actual:
+        if not np.all(np.isfinite(val)):
+          raise FloatingPointError("compiled JIT produced nan")
+      for ref, val in zip(reference, actual, strict=True):
+        np.testing.assert_array_equal(ref, val)
+    return loaded_jit if return_loaded else current_jit
+
+  print('capture + replay')
+  try:
+    return _evaluate_and_verify(jit, jit_or_fn, benchmark_runs)
+  except FloatingPointError as e:
+    from tinygrad.helpers import FLOAT16
+    if FLOAT16.value:
+      print(f"{e}")
+      if hasattr(jit, 'reset'):
+        jit.reset()
+      elif hasattr(jit_or_fn, 'reset'):
+        jit_or_fn.reset()
+      with Context(FLOAT16=0):
+        return _evaluate_and_verify(jit, jit_or_fn, benchmark_runs)
+    raise
 
 
 def _parse_size(size_str: str) -> tuple[int, int]:
