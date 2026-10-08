@@ -46,3 +46,27 @@ Test your vehicle's longitudinal control tuning with this tool. The tool will te
     ```
 
 You can reach out on [Discord](https://discord.comma.ai) if you have any questions about these instructions or the tool itself.
+
+## Maneuver sets
+
+`LongitudinalManeuverSet` picks which maneuvers run. It defaults to `stock` (the suite above).
+
+| Set | Maneuvers | Where |
+| :--- | :--- | :--- |
+| `stock` | stop, start, creep, ±1 m/s² and −3.5 / +2 m/s² steps from 20 mph | empty parking lot |
+| `subaru_highway` | start and creep from stop, hold speed and ±0.5 to ±2 m/s² steps at 45 mph, hold and +0.5 m/s² at 65 mph | long, empty, straight road where those speeds are legal |
+
+Set it with the device on and the car off (`LongitudinalManeuverMode` is cleared when openpilot starts and when the car goes offroad, so set both just before starting the car):
+
+```sh
+echo -n subaru_highway > /data/params/d/LongitudinalManeuverSet
+echo -n 1 > /data/params/d/LongitudinalManeuverMode
+```
+
+### Subaru report
+
+`subaru_report.py` adds what was sent to the car (`Cruise_Throttle`, `Cruise_RPM`, `Brake_Pressure`), the engine RPM, and the road grade estimate to each run, and can overlay two routes:
+
+```sh
+python openpilot/tools/longitudinal_maneuvers/subaru_report.py <route> [<compare route>] --labels baseline new
+```

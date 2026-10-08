@@ -136,6 +136,70 @@ MANEUVERS = [
   ),
 ]
 
+# Opt-in set for tuning feedforward tables at road speeds (LongitudinalManeuverSet=subaru_highway).
+# Ordered by speed to limit turnarounds; needs a long, empty, straight road.
+SUBARU_HIGHWAY_MANEUVERS = [
+  Maneuver(
+    "start from stop: +1m/s^2",
+    [Action([1], [5])],
+    repeat=1,
+    initial_speed=0.,
+  ),
+  Maneuver(
+    "creep from stop: +0.3m/s^2",
+    [Action([0.3], [6])],
+    repeat=1,
+    initial_speed=0.,
+  ),
+  Maneuver(
+    "hold speed: 0m/s^2 at 45mph",
+    [Action([0], [15])],
+    repeat=1,
+    initial_speed=45. * CV.MPH_TO_MS,
+  ),
+  Maneuver(
+    "gas step response: +0.5m/s^2 from 45mph",
+    [Action([0.5], [4])],
+    repeat=1,
+    initial_speed=45. * CV.MPH_TO_MS,
+  ),
+  Maneuver(
+    "gas step response: +1m/s^2 from 45mph",
+    [Action([1], [3])],
+    repeat=1,
+    initial_speed=45. * CV.MPH_TO_MS,
+  ),
+  Maneuver(
+    "brake step response: -1m/s^2 from 45mph",
+    [Action([-1], [3])],
+    repeat=1,
+    initial_speed=45. * CV.MPH_TO_MS,
+  ),
+  Maneuver(
+    "brake step response: -2m/s^2 from 45mph",
+    [Action([-2], [3])],
+    repeat=1,
+    initial_speed=45. * CV.MPH_TO_MS,
+  ),
+  Maneuver(
+    "hold speed: 0m/s^2 at 65mph",
+    [Action([0], [15])],
+    repeat=1,
+    initial_speed=65. * CV.MPH_TO_MS,
+  ),
+  Maneuver(
+    "gas step response: +0.5m/s^2 from 65mph",
+    [Action([0.5], [4])],
+    repeat=1,
+    initial_speed=65. * CV.MPH_TO_MS,
+  ),
+]
+
+MANEUVER_SETS = {
+  "stock": MANEUVERS,
+  "subaru_highway": SUBARU_HIGHWAY_MANEUVERS,
+}
+
 
 def main():
   params = Params()
@@ -145,7 +209,11 @@ def main():
   sm = messaging.SubMaster(['carState', 'carControl', 'controlsState', 'selfdriveState', 'modelV2'], poll='modelV2')
   pm = messaging.PubMaster(['longitudinalPlan', 'longitudinalPlanSP', 'driverAssistance', 'alertDebug'])
 
-  maneuvers = iter(MANEUVERS)
+  maneuver_set = params.get("LongitudinalManeuverSet") or "stock"
+  if maneuver_set not in MANEUVER_SETS:
+    cloudlog.warning(f"unknown LongitudinalManeuverSet {maneuver_set!r}, using stock")
+    maneuver_set = "stock"
+  maneuvers = iter(MANEUVER_SETS[maneuver_set])
   maneuver = None
 
   while True:

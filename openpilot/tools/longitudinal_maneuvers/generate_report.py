@@ -148,24 +148,8 @@ def report(platform, route, _description, CP, ID, maneuvers):
   webbrowser.open_new_tab(str(output_fn))
 
 
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser(description='Generate longitudinal maneuver report from route')
-  parser.add_argument('route', type=str, help='Route name (e.g. 00000000--5f742174be)')
-  parser.add_argument('description', type=str, nargs='?')
-
-  args = parser.parse_args()
-
-  if '/' in args.route or '|' in args.route:
-    lr = LogReader(args.route)
-  else:
-    segs = [seg for seg in os.listdir(Paths.log_root()) if args.route in seg]
-    lr = LogReader([os.path.join(Paths.log_root(), seg, 'rlog.zst') for seg in segs])
-
-  CP = lr.first('carParams')
-  ID = lr.first('initData')
-  platform = CP.carFingerprint
-  print('processing report for', platform)
-
+def get_maneuvers(lr) -> list[tuple[str, list[list]]]:
+  """Split a route into [(description, [run messages, ...]), ...] using maneuversd's alerts."""
   maneuvers: list[tuple[str, list[list]]] = []
   active_prev = False
   description_prev = None
@@ -184,4 +168,25 @@ if __name__ == '__main__':
     if active_prev:
       maneuvers[-1][1][-1].append(msg)
 
-  report(platform, args.route, args.description, CP, ID, maneuvers)
+  return maneuvers
+
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser(description='Generate longitudinal maneuver report from route')
+  parser.add_argument('route', type=str, help='Route name (e.g. 00000000--5f742174be)')
+  parser.add_argument('description', type=str, nargs='?')
+
+  args = parser.parse_args()
+
+  if '/' in args.route or '|' in args.route:
+    lr = LogReader(args.route)
+  else:
+    segs = [seg for seg in os.listdir(Paths.log_root()) if args.route in seg]
+    lr = LogReader([os.path.join(Paths.log_root(), seg, 'rlog.zst') for seg in segs])
+
+  CP = lr.first('carParams')
+  ID = lr.first('initData')
+  platform = CP.carFingerprint
+  print('processing report for', platform)
+
+  report(platform, args.route, args.description, CP, ID, get_maneuvers(lr))

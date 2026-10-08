@@ -1,0 +1,29 @@
+# Build and test the Subaru Impreza longitudinal branch on Linux.
+# See docker/README.md for usage.
+
+FROM ubuntu:24.04 AS dev
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    PATH=/root/.local/bin:$PATH \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/root/.cache/uv \
+    UV_PYTHON_INSTALL_DIR=/opt/venv/python
+
+# same base packages tools/setup_dependencies.sh installs on a bare image, plus LLVM for tinygrad model compiles
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates build-essential curl libcurl4-openssl-dev locales git git-lfs \
+      libllvm18 && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+WORKDIR /sunnypilot
+CMD ["bash", "docker/test-subaru-long.sh"]
+
+
+FROM dev AS build
+
+COPY . /sunnypilot
+RUN bash docker/test-subaru-long.sh --setup-only
+RUN bash docker/build-sunnypilot.sh
